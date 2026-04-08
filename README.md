@@ -40,6 +40,7 @@ wp-local doctor
 | `wp-local delete <name>` | Remove a site and its database |
 | `wp-local doctor` | Check PHP, MySQL, and permissions |
 | `wp-local db:list` | List all databases in MySQL |
+| `wp-local wp <name> <args>` | Run a WP-CLI command against a site |
 | `wp-local update` | Update to the latest version |
 
 ---
@@ -77,6 +78,18 @@ wp-local delete <name>
 ```
 
 Removes the site directory and drops the associated database. Prompts for confirmation before proceeding.
+
+**WP-CLI passthrough**
+
+If [WP-CLI](https://wp-cli.org) is installed, you can run any WP-CLI command against a site without needing to `cd` into it:
+
+```bash
+wp-local wp <name> plugin install woocommerce --activate
+wp-local wp <name> user list
+wp-local wp <name> search-replace old-domain.com new-domain.com
+```
+
+WP-CLI is also used automatically during `wp-local new` if installed, replacing the built-in PHP installer.
 
 **Update**
 

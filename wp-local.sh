@@ -66,6 +66,7 @@ print_logo() {
   echo "  delete [name]  Wipe a site and its database"
   echo "  doctor         Check & fix environment (PHP/MySQL)"
   echo "  db:list        List all databases in MySQL"
+  echo "  wp <name> ...  Run a WP-CLI command against a site"
   echo "  update         Pull the latest version from GitHub"
   echo ""
 }
@@ -245,8 +246,20 @@ add_filter('site_status_tests', function ($tests) {
 PHP
 
   step "Finalizing WordPress installation..."
-  export WP_INSTALL_TITLE="$RAW_NAME" WP_INSTALL_USER="$WP_USER" WP_INSTALL_PASS="$WP_PASS"
-  OUTPUT=$(php <<'PHP'
+  if command -v wp &>/dev/null; then
+    wp core install \
+      --path="$SITE_DIR" \
+      --url="$SITE_URL" \
+      --title="$RAW_NAME" \
+      --admin_user="$WP_USER" \
+      --admin_password="$WP_PASS" \
+      --admin_email="admin@local.test" \
+      --skip-email
+    KEY=$(wp eval 'echo wp_generate_password(20, false);' --path="$SITE_DIR")
+    wp user meta update "$WP_USER" _auto_login_key "$KEY" --path="$SITE_DIR"
+  else
+    export WP_INSTALL_TITLE="$RAW_NAME" WP_INSTALL_USER="$WP_USER" WP_INSTALL_PASS="$WP_PASS"
+    OUTPUT=$(php <<'PHP'
 <?php
 define('WP_INSTALLING', true);
 require './wp-load.php';
@@ -260,8 +273,9 @@ update_user_meta(get_user_by('login', $user)->ID, '_auto_login_key', $key);
 echo "KEY=$key";
 PHP
 )
-  unset WP_INSTALL_TITLE WP_INSTALL_USER WP_INSTALL_PASS
-  KEY=$(echo "$OUTPUT" | grep KEY | cut -d= -f2)
+    unset WP_INSTALL_TITLE WP_INSTALL_USER WP_INSTALL_PASS
+    KEY=$(echo "$OUTPUT" | grep KEY | cut -d= -f2)
+  fi
   LOGIN_URL="$SITE_URL/?auto_login=$KEY"
 
   echo "SITE_URL=$SITE_URL" > "$SITE_DIR/.meta"
@@ -347,6 +361,18 @@ list_databases() {
   mysql_exec "SHOW DATABASES;"
 }
 
+run_wp_cli() {
+  local SITENAME
+  SITENAME=$(slugify "${2:-}")
+  [ -z "$SITENAME" ] && error "Usage: wp-local wp <site-name> <wp-cli args>"
+  [ ! -d "$BASE_DIR/$SITENAME" ] && error "Site '$SITENAME' not found."
+  command -v wp &>/dev/null || error "WP-CLI is not installed. Visit https://wp-cli.org to install it."
+  local SITE_URL
+  SITE_URL=$(get_meta "$SITENAME" "SITE_URL")
+  shift 2
+  wp --path="$BASE_DIR/$SITENAME" --url="$SITE_URL" "$@"
+}
+
 case "$1" in
   new)     create_site ;;
   start)   start_server ;;
@@ -355,6 +381,7 @@ case "$1" in
   delete)  delete_site "$@" ;;
   doctor)  run_doctor ;;
   db:list) list_databases ;;
+  wp)      run_wp_cli "$@" ;;
   update)  update_tool ;;
   *)       print_logo ;;
 esac
