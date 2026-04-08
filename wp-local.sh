@@ -137,6 +137,24 @@ update_tool() {
   fi
 }
 
+install_wp_cli() {
+  step "Installing WP-CLI..."
+  local TMP_PHAR
+  TMP_PHAR=$(mktemp /tmp/wp-cli.XXXXXX.phar)
+  if curl -fsSL https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar -o "$TMP_PHAR"; then
+    chmod +x "$TMP_PHAR"
+    if sudo mv "$TMP_PHAR" /usr/local/bin/wp; then
+      success "WP-CLI installed successfully."
+    else
+      rm -f "$TMP_PHAR"
+      error "Failed to install WP-CLI: could not move to /usr/local/bin/wp."
+    fi
+  else
+    rm -f "$TMP_PHAR"
+    error "Failed to download WP-CLI."
+  fi
+}
+
 # ===== SETUP WIZARD =====
 setup_wizard() {
   echo -e "${MAGENTA}[setup] First-Time Setup Wizard${RESET}"
@@ -154,6 +172,14 @@ DB_ROOT_PASS="$DB_ROOT_PASS"
 PORT=$PORT
 EOF
   chmod 600 "$CONF_FILE"
+
+  if ! command -v wp &>/dev/null; then
+    echo ""
+    read -p "WP-CLI not found. Install it now? (y/n): " INSTALL_WP_CLI
+    [[ "$INSTALL_WP_CLI" =~ ^[Yy]$ ]] && install_wp_cli || echo -e "${YELLOW}Skipping WP-CLI. You can install it later from https://wp-cli.org${RESET}"
+  else
+    success "WP-CLI already installed ($(wp --version 2>/dev/null))"
+  fi
 }
 
 if [ -f "$CONF_FILE" ]; then source "$CONF_FILE"; else setup_wizard; source "$CONF_FILE"; fi
@@ -175,6 +201,13 @@ run_doctor() {
     install_dependency "mysql"
   fi
   [ -w "$BASE_DIR" ] && success "Site storage writable" || error "Cannot write to $BASE_DIR"
+  if command -v wp &>/dev/null; then
+    success "WP-CLI installed ($(wp --version 2>/dev/null))"
+  else
+    echo -e "${YELLOW}! WP-CLI not installed.${RESET}"
+    read -p "Install WP-CLI now? (y/n): " INSTALL_WP_CLI
+    [[ "$INSTALL_WP_CLI" =~ ^[Yy]$ ]] && install_wp_cli
+  fi
   echo ""
 }
 
