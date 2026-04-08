@@ -3,6 +3,9 @@
 
 set -eo pipefail
 
+# Suppress PHP 8.4 deprecation notices from WP-CLI's bundled libraries
+export WP_CLI_PHP_ARGS="-d error_reporting=8191"
+
 # ===== CONFIG & PATHS =====
 CONF_FILE="$HOME/.wp-local.conf"
 BASE_DIR="${HOME}/wp-sites"
