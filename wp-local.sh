@@ -185,6 +185,7 @@ EOF
   fi
 }
 
+# shellcheck source=/dev/null
 if [ -f "$CONF_FILE" ]; then source "$CONF_FILE"; else setup_wizard; source "$CONF_FILE"; fi
 
 # ===== CORE COMMANDS =====
@@ -362,14 +363,16 @@ list_sites() {
 show_info() {
   print_logo
   local SITE_INPUT=$2
-  local SITENAME=$(slugify "$SITE_INPUT")
-  
+  local SITENAME
+  SITENAME=$(slugify "$SITE_INPUT")
+
   if [ -z "$SITENAME" ] || [ ! -d "$BASE_DIR/$SITENAME" ]; then
     error "Usage: wp-local info [site-name]"
   fi
 
-  local URL=$(get_meta "$SITENAME" "SITE_URL")
-  local LOGIN=$(get_meta "$SITENAME" "AUTO_LOGIN")
+  local URL LOGIN
+  URL=$(get_meta "$SITENAME" "SITE_URL")
+  LOGIN=$(get_meta "$SITENAME" "AUTO_LOGIN")
 
   echo -e "${BLUE}[info] Site Info: $SITENAME${RESET}"
   echo "---------------------------------"
@@ -385,7 +388,7 @@ delete_site() {
   echo -e "${RED}[warn] Delete site '$SITENAME' and its database?${RESET}"
   read -p "Confirm (y/n): " CONF
   if [[ "$CONF" =~ ^[Yy]$ ]]; then
-    rm -rf "$BASE_DIR/$SITENAME"
+    rm -rf "${BASE_DIR:?}/${SITENAME:?}"
     mysql_exec "DROP DATABASE IF EXISTS \`${SITENAME}_db\`; DROP USER IF EXISTS '${SITENAME}_user'@'localhost';"
     success "Site '$SITENAME' deleted."
   else
