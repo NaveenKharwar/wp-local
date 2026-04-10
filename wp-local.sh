@@ -1,5 +1,5 @@
 #!/bin/bash
-# version: 1.2.3
+# version: 1.2.4
 
 set -eo pipefail
 
@@ -70,6 +70,7 @@ print_logo() {
   echo "  doctor         Check & fix environment (PHP/MySQL)"
   echo "  db:list        List all databases in MySQL"
   echo "  wp <name> ...  Run a WP-CLI command against a site"
+  echo "  regen-login <name>  Regenerate the auto-login URL for a site"
   echo "  update         Pull the latest version from GitHub"
   echo ""
 }
@@ -292,8 +293,8 @@ PHP
       --admin_password="$WP_PASS" \
       --admin_email="admin@local.test" \
       --skip-email
-    KEY=$(wp eval 'echo wp_generate_password(20, false);' --path="$SITE_DIR")
-    wp user meta update "$WP_USER" _auto_login_key "$KEY" --path="$SITE_DIR"
+    KEY=$(wp eval 'echo wp_generate_password(20, false);' --path="$SITE_DIR" | tr -d '[:space:]')
+    wp user meta update "$WP_USER" _auto_login_key "$KEY" --path="$SITE_DIR" > /dev/null
   else
     export WP_INSTALL_TITLE="$RAW_NAME" WP_INSTALL_USER="$WP_USER" WP_INSTALL_PASS="$WP_PASS"
     OUTPUT=$(php <<'PHP'
@@ -311,7 +312,7 @@ echo "KEY=$key";
 PHP
 )
     unset WP_INSTALL_TITLE WP_INSTALL_USER WP_INSTALL_PASS
-    KEY=$(echo "$OUTPUT" | grep KEY | cut -d= -f2)
+    KEY=$(echo "$OUTPUT" | grep "^KEY=" | cut -d= -f2 | tr -d '[:space:]')
   fi
   LOGIN_URL="$SITE_URL/?auto_login=$KEY"
 
@@ -421,6 +422,24 @@ list_databases() {
   mysql_exec "SHOW DATABASES;"
 }
 
+regen_login() {
+  local SITENAME
+  SITENAME=$(slugify "${2:-}")
+  [ -z "$SITENAME" ] && error "Usage: wp-local regen-login <site-name>"
+  [ ! -d "$BASE_DIR/$SITENAME" ] && error "Site '$SITENAME' not found."
+  command -v wp &>/dev/null || error "WP-CLI is required for regen-login. Install it with: wp-local doctor"
+
+  local SITE_URL
+  SITE_URL=$(get_meta "$SITENAME" "SITE_URL")
+  local KEY
+  KEY=$(wp eval 'echo wp_generate_password(20, false);' --path="$BASE_DIR/$SITENAME" | tr -d '[:space:]')
+  wp user meta update 1 _auto_login_key "$KEY" --path="$BASE_DIR/$SITENAME" > /dev/null
+  local LOGIN_URL="$SITE_URL/?auto_login=$KEY"
+  sed -i'' "s|^AUTO_LOGIN=.*|AUTO_LOGIN=$LOGIN_URL|" "$BASE_DIR/$SITENAME/.meta"
+  success "Login link regenerated."
+  echo -e "${CYAN}[login]${RESET} $LOGIN_URL"
+}
+
 run_wp_cli() {
   local SITENAME
   SITENAME=$(slugify "${2:-}")
@@ -441,7 +460,8 @@ case "$1" in
   delete)  delete_site "$@" ;;
   doctor)  run_doctor ;;
   db:list) list_databases ;;
-  wp)      run_wp_cli "$@" ;;
-  update)  update_tool ;;
+  wp)          run_wp_cli "$@" ;;
+  regen-login) regen_login "$@" ;;
+  update)      update_tool ;;
   *)       print_logo ;;
 esac
