@@ -318,6 +318,8 @@ PHP
 
   echo "SITE_URL=$SITE_URL" > "$SITE_DIR/.meta"
   echo "AUTO_LOGIN=$LOGIN_URL" >> "$SITE_DIR/.meta"
+  echo "WP_USER=$WP_USER" >> "$SITE_DIR/.meta"
+  echo "WP_PASS=$WP_PASS" >> "$SITE_DIR/.meta"
 
   success "WordPress is ready!"
   echo -e "\n${CYAN}[url]${RESET}   $SITE_URL"
@@ -392,15 +394,29 @@ show_info() {
     error "Usage: wp-local info [site-name]"
   fi
 
-  local URL LOGIN
+  local URL WP_USER WP_PASS LOGIN
   URL=$(get_meta "$SITENAME" "SITE_URL")
-  LOGIN=$(get_meta "$SITENAME" "AUTO_LOGIN")
+  WP_USER=$(get_meta "$SITENAME" "WP_USER")
+  WP_PASS=$(get_meta "$SITENAME" "WP_PASS")
+
+  # Regenerate auto-login key
+  if command -v wp &>/dev/null; then
+    local KEY
+    KEY=$(wp eval 'echo wp_generate_password(20, false);' --path="$BASE_DIR/$SITENAME" | tr -d '[:space:]')
+    wp user meta update 1 _auto_login_key "$KEY" --path="$BASE_DIR/$SITENAME" > /dev/null
+    LOGIN="$URL/?auto_login=$KEY"
+    safe_sed "s|^AUTO_LOGIN=.*|AUTO_LOGIN=$LOGIN|" "$BASE_DIR/$SITENAME/.meta"
+  else
+    LOGIN=$(get_meta "$SITENAME" "AUTO_LOGIN")
+  fi
 
   echo -e "${BLUE}[info] Site Info: $SITENAME${RESET}"
   echo "---------------------------------"
-  echo "Path:  $BASE_DIR/$SITENAME"
-  echo "URL:   $URL"
-  echo "Login: $LOGIN"
+  echo "Path:     $BASE_DIR/$SITENAME"
+  echo "URL:      $URL"
+  [ -n "$WP_USER" ] && echo "Username: $WP_USER"
+  [ -n "$WP_PASS" ] && echo "Password: $WP_PASS"
+  echo "Login:    $LOGIN"
   echo "---------------------------------"
 }
 
@@ -435,7 +451,7 @@ regen_login() {
   KEY=$(wp eval 'echo wp_generate_password(20, false);' --path="$BASE_DIR/$SITENAME" | tr -d '[:space:]')
   wp user meta update 1 _auto_login_key "$KEY" --path="$BASE_DIR/$SITENAME" > /dev/null
   local LOGIN_URL="$SITE_URL/?auto_login=$KEY"
-  sed -i'' "s|^AUTO_LOGIN=.*|AUTO_LOGIN=$LOGIN_URL|" "$BASE_DIR/$SITENAME/.meta"
+  safe_sed "s|^AUTO_LOGIN=.*|AUTO_LOGIN=$LOGIN_URL|" "$BASE_DIR/$SITENAME/.meta"
   success "Login link regenerated."
   echo -e "${CYAN}[login]${RESET} $LOGIN_URL"
 }
