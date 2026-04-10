@@ -328,13 +328,34 @@ start_server() {
   local ROUTER="$BASE_DIR/router.php"
   local PHPINI="$BASE_DIR/php.ini"
 
-  [ ! -f "$ROUTER" ] && cat <<'PHP' > "$ROUTER"
+  cat <<'PHP' > "$ROUTER"
 <?php
-$root = $_SERVER['DOCUMENT_ROOT']; $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
-if (file_exists($root.$path) && is_file($root.$path)) return false;
-$s = explode('/', ltrim($path, '/'))[0];
-if ($s && is_dir($root.'/'.$s)) { $_SERVER['SCRIPT_NAME']="/$s/index.php"; include $root."/$s/index.php"; }
-else return false;
+$root = $_SERVER['DOCUMENT_ROOT'];
+$path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+
+// Serve existing static files directly
+if (file_exists($root . $path) && is_file($root . $path)) {
+    return false;
+}
+
+// If the path is a directory (e.g. /site/wp-admin/), serve its index.php
+if (is_dir($root . $path)) {
+    $index = rtrim($path, '/') . '/index.php';
+    if (file_exists($root . $index)) {
+        $_SERVER['SCRIPT_NAME'] = $index;
+        include $root . $index;
+        return;
+    }
+}
+
+// Fall through to the site root index.php so WordPress can handle rewrites
+$site = explode('/', ltrim($path, '/'))[0];
+if ($site && is_dir($root . '/' . $site)) {
+    $_SERVER['SCRIPT_NAME'] = '/' . $site . '/index.php';
+    include $root . '/' . $site . '/index.php';
+} else {
+    return false;
+}
 PHP
 
   [ ! -f "$PHPINI" ] && cat <<'INI' > "$PHPINI"
