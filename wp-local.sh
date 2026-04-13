@@ -1,5 +1,5 @@
 #!/bin/bash
-# version: 1.2.8
+# version: 1.2.9
 
 set -eo pipefail
 
@@ -404,7 +404,7 @@ show_info() {
   LOGIN=$(get_meta "$SITENAME" "AUTO_LOGIN")
   if command -v wp &>/dev/null; then
     local KEY
-    KEY=$(wp eval 'echo wp_generate_password(20, false);' --path="$BASE_DIR/$SITENAME" 2>/dev/null | grep -oE '^[a-zA-Z0-9]+$' | tail -1)
+    KEY=$(wp eval 'echo wp_generate_password(20, false);' --path="$BASE_DIR/$SITENAME" 2>/dev/null | grep -oE '^[a-zA-Z0-9]+$' | tail -1) || true
     if [ -n "$KEY" ]; then
       wp user meta update 1 _auto_login_key "$KEY" --path="$BASE_DIR/$SITENAME" > /dev/null 2>&1 || true
       LOGIN="$URL/?auto_login=$KEY"
@@ -450,8 +450,8 @@ regen_login() {
   local SITE_URL
   SITE_URL=$(get_meta "$SITENAME" "SITE_URL")
   local KEY
-  KEY=$(wp eval 'echo wp_generate_password(20, false);' --path="$BASE_DIR/$SITENAME" 2>/dev/null | grep -oE '^[a-zA-Z0-9]+$' | tail -1)
-  wp user meta update 1 _auto_login_key "$KEY" --path="$BASE_DIR/$SITENAME" > /dev/null 2>&1
+  KEY=$(wp eval 'echo wp_generate_password(20, false);' --path="$BASE_DIR/$SITENAME" 2>/dev/null | grep -oE '^[a-zA-Z0-9]+$' | tail -1) || true
+  wp user meta update 1 _auto_login_key "$KEY" --path="$BASE_DIR/$SITENAME" > /dev/null 2>&1 || true
   local LOGIN_URL="$SITE_URL/?auto_login=$KEY"
   safe_sed "s|^AUTO_LOGIN=.*|AUTO_LOGIN=$LOGIN_URL|" "$BASE_DIR/$SITENAME/.meta"
   success "Login link regenerated."
