@@ -1,5 +1,5 @@
 #!/bin/bash
-# version: 1.2.9
+# version: 1.3.0
 
 set -eo pipefail
 
@@ -445,13 +445,27 @@ regen_login() {
   SITENAME=$(slugify "${2:-}")
   [ -z "$SITENAME" ] && error "Usage: wp-local regen-login <site-name>"
   [ ! -d "$BASE_DIR/$SITENAME" ] && error "Site '$SITENAME' not found."
-  command -v wp &>/dev/null || error "WP-CLI is required for regen-login. Install it with: wp-local doctor"
 
-  local SITE_URL
+  local SITE_URL WP_USER
   SITE_URL=$(get_meta "$SITENAME" "SITE_URL")
+  WP_USER=$(get_meta "$SITENAME" "WP_USER")
+  [ -z "$SITE_URL" ] && error "Site URL not found. Run: wp-local repair $SITENAME"
+  [ -z "$WP_USER" ] && error "Admin user not found. Run: wp-local repair $SITENAME"
+
   local KEY
-  KEY=$(wp eval 'echo wp_generate_password(20, false);' --path="$BASE_DIR/$SITENAME" 2>/dev/null | grep -oE '^[a-zA-Z0-9]+$' | tail -1) || true
-  wp user meta update 1 _auto_login_key "$KEY" --path="$BASE_DIR/$SITENAME" > /dev/null 2>&1 || true
+  KEY=$(php -r "
+define('WP_INSTALLING', true);
+\$_SERVER['HTTP_HOST'] = '127.0.0.1';
+\$_SERVER['REQUEST_URI'] = '/';
+chdir('$BASE_DIR/$SITENAME');
+require '$BASE_DIR/$SITENAME/wp-load.php';
+\$key = wp_generate_password(20, false);
+\$user = get_user_by('login', '$WP_USER');
+if (\$user) { update_user_meta(\$user->ID, '_auto_login_key', \$key); echo \$key; }
+" 2>/dev/null) || true
+
+  [ -z "$KEY" ] && error "Failed to generate login key. Is the server running and DB connected?"
+
   local LOGIN_URL="$SITE_URL/?auto_login=$KEY"
   safe_sed "s|^AUTO_LOGIN=.*|AUTO_LOGIN=$LOGIN_URL|" "$BASE_DIR/$SITENAME/.meta"
   success "Login link regenerated."
@@ -487,12 +501,18 @@ repair_site() {
 
     local LOGIN_URL KEY
     LOGIN_URL=$(get_meta "$SITENAME" "AUTO_LOGIN")
-    if command -v wp &>/dev/null && [ -n "$WP_USER" ]; then
-      KEY=$(wp eval 'echo wp_generate_password(20, false);' --path="$SITE_DIR" 2>/dev/null | grep -oE '^[a-zA-Z0-9]+$' | tail -1)
-      if [ -n "$KEY" ]; then
-        wp user meta update "$WP_USER" _auto_login_key "$KEY" --path="$SITE_DIR" > /dev/null 2>&1 || true
-        LOGIN_URL="$SITE_URL/?auto_login=$KEY"
-      fi
+    KEY=$(php -r "
+define('WP_INSTALLING', true);
+\$_SERVER['HTTP_HOST'] = '127.0.0.1';
+\$_SERVER['REQUEST_URI'] = '/';
+chdir('$SITE_DIR');
+require '$SITE_DIR/wp-load.php';
+\$key = wp_generate_password(20, false);
+\$user = get_user_by('login', '$WP_USER');
+if (\$user) { update_user_meta(\$user->ID, '_auto_login_key', \$key); echo \$key; }
+" 2>/dev/null) || true
+    if [ -n "$KEY" ]; then
+      LOGIN_URL="$SITE_URL/?auto_login=$KEY"
     fi
 
     cat > "$META_PATH" <<EOF
