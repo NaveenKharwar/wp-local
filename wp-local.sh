@@ -292,7 +292,7 @@ PHP
       --admin_user="$WP_USER" \
       --admin_password="$WP_PASS" \
       --admin_email="admin@local.test" \
-      --skip-email 2>/dev/null
+      --skip-email > /dev/null 2>&1
     KEY=$(wp eval 'echo wp_generate_password(20, false);' --path="$SITE_DIR" 2>/dev/null | grep -oE '^[a-zA-Z0-9]+$' | tail -1)
     wp user meta update "$WP_USER" _auto_login_key "$KEY" --path="$SITE_DIR" > /dev/null 2>&1
   else
