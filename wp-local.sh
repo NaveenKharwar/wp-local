@@ -1,5 +1,5 @@
 #!/bin/bash
-# version: 1.2.5
+# version: 1.2.6
 
 set -eo pipefail
 
@@ -292,9 +292,9 @@ PHP
       --admin_user="$WP_USER" \
       --admin_password="$WP_PASS" \
       --admin_email="admin@local.test" \
-      --skip-email
-    KEY=$(wp eval 'echo wp_generate_password(20, false);' --path="$SITE_DIR" | tr -d '[:space:]')
-    wp user meta update "$WP_USER" _auto_login_key "$KEY" --path="$SITE_DIR" > /dev/null
+      --skip-email 2>/dev/null
+    KEY=$(wp eval 'echo wp_generate_password(20, false);' --path="$SITE_DIR" 2>/dev/null | grep -oE '^[a-zA-Z0-9]+$' | tail -1)
+    wp user meta update "$WP_USER" _auto_login_key "$KEY" --path="$SITE_DIR" > /dev/null 2>&1
   else
     export WP_INSTALL_TITLE="$RAW_NAME" WP_INSTALL_USER="$WP_USER" WP_INSTALL_PASS="$WP_PASS"
     OUTPUT=$(php <<'PHP'
@@ -400,14 +400,15 @@ show_info() {
   WP_PASS=$(get_meta "$SITENAME" "WP_PASS")
 
   # Regenerate auto-login key
+  LOGIN=$(get_meta "$SITENAME" "AUTO_LOGIN")
   if command -v wp &>/dev/null; then
     local KEY
-    KEY=$(wp eval 'echo wp_generate_password(20, false);' --path="$BASE_DIR/$SITENAME" | tr -d '[:space:]')
-    wp user meta update 1 _auto_login_key "$KEY" --path="$BASE_DIR/$SITENAME" > /dev/null
-    LOGIN="$URL/?auto_login=$KEY"
-    safe_sed "s|^AUTO_LOGIN=.*|AUTO_LOGIN=$LOGIN|" "$BASE_DIR/$SITENAME/.meta"
-  else
-    LOGIN=$(get_meta "$SITENAME" "AUTO_LOGIN")
+    KEY=$(wp eval 'echo wp_generate_password(20, false);' --path="$BASE_DIR/$SITENAME" 2>/dev/null | grep -oE '^[a-zA-Z0-9]+$' | tail -1)
+    if [ -n "$KEY" ]; then
+      wp user meta update 1 _auto_login_key "$KEY" --path="$BASE_DIR/$SITENAME" > /dev/null 2>&1 || true
+      LOGIN="$URL/?auto_login=$KEY"
+      safe_sed "s|^AUTO_LOGIN=.*|AUTO_LOGIN=$LOGIN|" "$BASE_DIR/$SITENAME/.meta"
+    fi
   fi
 
   echo -e "${BLUE}[info] Site Info: $SITENAME${RESET}"
@@ -448,8 +449,8 @@ regen_login() {
   local SITE_URL
   SITE_URL=$(get_meta "$SITENAME" "SITE_URL")
   local KEY
-  KEY=$(wp eval 'echo wp_generate_password(20, false);' --path="$BASE_DIR/$SITENAME" | tr -d '[:space:]')
-  wp user meta update 1 _auto_login_key "$KEY" --path="$BASE_DIR/$SITENAME" > /dev/null
+  KEY=$(wp eval 'echo wp_generate_password(20, false);' --path="$BASE_DIR/$SITENAME" 2>/dev/null | grep -oE '^[a-zA-Z0-9]+$' | tail -1)
+  wp user meta update 1 _auto_login_key "$KEY" --path="$BASE_DIR/$SITENAME" > /dev/null 2>&1
   local LOGIN_URL="$SITE_URL/?auto_login=$KEY"
   safe_sed "s|^AUTO_LOGIN=.*|AUTO_LOGIN=$LOGIN_URL|" "$BASE_DIR/$SITENAME/.meta"
   success "Login link regenerated."
