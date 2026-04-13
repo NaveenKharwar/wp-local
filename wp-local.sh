@@ -1,5 +1,5 @@
 #!/bin/bash
-# version: 1.2.6
+# version: 1.2.7
 
 set -eo pipefail
 
