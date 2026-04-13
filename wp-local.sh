@@ -1,5 +1,5 @@
 #!/bin/bash
-# version: 1.2.7
+# version: 1.2.8
 
 set -eo pipefail
 
@@ -71,6 +71,7 @@ print_logo() {
   echo "  db:list        List all databases in MySQL"
   echo "  wp <name> ...  Run a WP-CLI command against a site"
   echo "  regen-login <name>  Regenerate the auto-login URL for a site"
+  echo "  repair [name]  Rebuild missing .meta for a site (or all sites)"
   echo "  update         Pull the latest version from GitHub"
   echo ""
 }
@@ -457,6 +458,62 @@ regen_login() {
   echo -e "${CYAN}[login]${RESET} $LOGIN_URL"
 }
 
+repair_site() {
+  local TARGET
+  TARGET=$(slugify "${2:-}")
+
+  repair_one() {
+    local SITENAME=$1
+    local SITE_DIR="$BASE_DIR/$SITENAME"
+    local META_PATH="$SITE_DIR/.meta"
+
+    [ ! -f "$SITE_DIR/wp-config.php" ] && return
+
+    echo -e "${BLUE}[repair] $SITENAME${RESET}"
+
+    local SITE_URL
+    SITE_URL=$(get_meta "$SITENAME" "SITE_URL")
+    if [ -z "$SITE_URL" ]; then
+      SITE_URL="http://127.0.0.1:$PORT/$SITENAME"
+    fi
+
+    local WP_USER WP_PASS
+    WP_USER=$(get_meta "$SITENAME" "WP_USER")
+    WP_PASS=$(get_meta "$SITENAME" "WP_PASS")
+
+    if [ -z "$WP_USER" ] && command -v wp &>/dev/null; then
+      WP_USER=$(wp user list --field=user_login --role=administrator --path="$SITE_DIR" 2>/dev/null | head -1)
+    fi
+
+    local LOGIN_URL KEY
+    LOGIN_URL=$(get_meta "$SITENAME" "AUTO_LOGIN")
+    if command -v wp &>/dev/null && [ -n "$WP_USER" ]; then
+      KEY=$(wp eval 'echo wp_generate_password(20, false);' --path="$SITE_DIR" 2>/dev/null | grep -oE '^[a-zA-Z0-9]+$' | tail -1)
+      if [ -n "$KEY" ]; then
+        wp user meta update "$WP_USER" _auto_login_key "$KEY" --path="$SITE_DIR" > /dev/null 2>&1 || true
+        LOGIN_URL="$SITE_URL/?auto_login=$KEY"
+      fi
+    fi
+
+    cat > "$META_PATH" <<EOF
+SITE_URL=$SITE_URL
+AUTO_LOGIN=${LOGIN_URL:-}
+WP_USER=${WP_USER:-}
+WP_PASS=${WP_PASS:-}
+EOF
+    success "Repaired: $SITENAME"
+  }
+
+  if [ -n "$TARGET" ]; then
+    [ ! -d "$BASE_DIR/$TARGET" ] && error "Site '$TARGET' not found."
+    repair_one "$TARGET"
+  else
+    for d in "$BASE_DIR"/*/; do
+      repair_one "$(basename "$d")"
+    done
+  fi
+}
+
 run_wp_cli() {
   local SITENAME
   SITENAME=$(slugify "${2:-}")
@@ -479,6 +536,7 @@ case "$1" in
   db:list) list_databases ;;
   wp)          run_wp_cli "$@" ;;
   regen-login) regen_login "$@" ;;
+  repair)      repair_site "$@" ;;
   update)      update_tool ;;
   *)       print_logo ;;
 esac
